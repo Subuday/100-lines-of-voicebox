@@ -1,4 +1,5 @@
 import math
+from typing import Optional
 import torch
 from torch import nn
 from torch.nn import Module
@@ -7,7 +8,7 @@ import torch.nn.functional as F
 from einops import rearrange
 from attend import Attend
 
-from helpers import exists
+from helpers import default, exists
 
 
 class PositionEmbedder(Module):
@@ -29,6 +30,16 @@ class GEGLU(Module):
     def forward(self, x):
         x, gate = x.chunk(2, dim = -1)
         return x * F.gelu(gate)
+
+
+class RMSNorm(Module):
+    def __init__(self, dim):
+        super().__init__()
+        self.scale = dim ** 0.5
+        self.gamma = nn.Parameter(torch.ones(dim))
+
+    def forward(self, x):
+        return F.normalize(x, dim = -1) * self.scale * self.gamma
 
 
 class FeedForward(Module):
@@ -85,31 +96,53 @@ class Transformer(Module):
         dim_head: int,
         num_heads: int,
         use_skip_connection: bool = False,
+        skip_connection_scale: Optional[float] = None,
         ff_mult: int = 4,
         ff_dropout: float = 0.,
     ):
         super().__init__()
+        self.skip_connection_scale = None
+        if use_skip_connection:
+            self.skip_connection_scale = default(skip_connection_scale, 2 ** -0.5)
+
         self.layers = nn.ModuleList([])
         assert depth % 2 == 0
         for layer in range(1, depth + 1):
-            has_scip_connection = use_skip_connection and layer > (depth // 2)
+            has_skip_connection = use_skip_connection and layer > (depth // 2)
             self.layers.append(
                 nn.ModuleList([
-                    nn.Linear(dim * 2, dim) if has_scip_connection else None,
-                    # GateLoop(dim = dim, use_jax_associative_scan = gateloop_use_jax, post_ln = True) if use_gateloop_layers else None,
-                    # rmsnorm_klass(dim = dim),
+                    nn.Linear(dim * 2, dim) if has_skip_connection else None,
+                    # TODO: Check GateLoop
+                    # TODO: Check AdaptiveRMSNorm
+                    RMSNorm(dim = dim),
                     Attention(dim = dim, dim_head = dim_head, num_heads = num_heads),
-                    # rmsnorm_klass(dim = dim),
+                    RMSNorm(dim = dim),
                     FeedForward(dim = dim, mult = ff_mult, dropout = ff_dropout)
                 ])
             )
 
+        self.out_norm = RMSNorm(dim)
 
     def forward(self, x):
-        for _,  attn, ff in self.layers:
-            x = attn(x)
-            x = ff(x)
-        return x
+        hidden_states = []
+        for connector, attn_norm, attn, ff_norm, ff in self.layers:
+            # In the paper, they use a u-net like skip connection.
+            # It's unclear how much this helps, as no ablations or further numbers given besides a brief one-two sentence mention.
+            if not exists(connector):
+                hidden_states.append(x)
+            else:
+                hidden_state = hidden_states.pop()
+                hidden_state *= self.skip_connection_scale
+                x = torch.cat((x, hidden_state), dim = -1)
+                x = connector(x)
+
+            attn_input = attn_norm(x)
+            x = x + attn(attn_input)
+
+            ff_input = ff_norm(x)
+            x = x + ff(ff_input)
+
+        return self.out_norm(x)
 
 
 class Voicebox(Module):
@@ -129,6 +162,7 @@ class Voicebox(Module):
             depth = 6,
             dim_head = 64,
             num_heads = 8,
+            use_skip_connection = True
         )
         self.out_proj = nn.Linear(512, 128)
 
