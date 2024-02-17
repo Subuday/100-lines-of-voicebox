@@ -5,6 +5,7 @@ from torch.nn import Module
 import torch.nn.functional as F
 
 from einops import rearrange
+from attend import Attend
 
 from helpers import exists
 
@@ -62,14 +63,17 @@ class Attention(Module):
         self.num_heads = num_heads
 
         self.to_qkv = nn.Linear(dim, dim_head * num_heads * 3, bias = False)
+        self.attend = Attend(dropout = dropout)
         self.to_out = nn.Linear(dim_head * num_heads, dim)
 
-    def forward(self, x, mask = None):
+    def forward(self, x):
         q, k, v = self.to_qkv(x).chunk(3, dim = -1)
         q, k, v = map(lambda t: rearrange(t, 'b c (h d) -> b h c d', h = self.num_heads), (q, k, v))
         # TODO: Add normalization component
         # TODO: Add rotary component
-        return x
+        output = self.attend(q, k, v)
+        output = rearrange(output, 'b h n d -> b n (h d)')
+        return output
         
 
 class Transformer(Module):
