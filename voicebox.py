@@ -1,3 +1,4 @@
+import math
 import torch
 from torch import nn
 from torch.nn import Module
@@ -7,6 +8,21 @@ from einops import rearrange
 from helpers import exists
 
 
+class PositionEmbedder(Module):
+
+    def __init__(self, dim):
+        super().__init__()
+        assert dim % 2 == 0
+        half_dim = dim // 2
+        self.w = nn.Parameter(torch.randn(half_dim))
+
+    def forward(self, x):
+        x = rearrange(x, 'b -> b 1')
+        freqs = 2 * math.pi * x * rearrange(self.w, 'd -> 1 d')
+        fouriered = torch.cat((freqs.sin(), freqs.cos()), dim = -1)
+        return fouriered
+
+
 class Voicebox(Module):
 
     def __init__(self):
@@ -14,7 +30,11 @@ class Voicebox(Module):
         self.in_proj = nn.Linear(128, 512)
         self.z_embed = nn.Embedding(2001 + 1, 512)
         self.lin_proj = nn.Linear(2 * 512 + 512, 512)
-        self.time_embed = nn.Linear(1, 2048)
+        self.time_embed = nn.Sequential(
+            PositionEmbedder(512),
+            nn.Linear(512, 2048),
+            nn.SiLU()
+        )
         self.transformer = nn.Linear(512, 512)
         self.out_proj = nn.Linear(512, 128)
 
