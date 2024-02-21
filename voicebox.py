@@ -192,6 +192,7 @@ class Voicebox(Module):
         )
         self.out_proj = nn.Linear(512, 128)
 
+    # TODO: There is a name mistake. x_t shape is [b, t, c] not [b, c, t]
     def forward(
         self,
         z,
