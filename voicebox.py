@@ -195,13 +195,13 @@ class Voicebox(Module):
     def forward(
         self,
         z,
-        x,
+        x_t,
         t,
         x_ctx = None,
         x_ctx_mask = None,
         cond_dropout_prob: float = 0.2,
     ):
-        x = self.in_proj(x)
+        x_t = self.in_proj(x_t)
 
         if x_ctx is not None:
             x_ctx = self.in_proj(x_ctx)
@@ -215,7 +215,7 @@ class Voicebox(Module):
 
         z_emb  = self.z_embed(z)
         
-        x = torch.cat([*filter(exists, (z_emb, x, x_ctx))], dim = -1)
+        x = torch.cat([*filter(exists, (z_emb, x_t, x_ctx))], dim = -1)
         
         x = self.lin_proj(x)
         x = x + self.conv_embed(x)
