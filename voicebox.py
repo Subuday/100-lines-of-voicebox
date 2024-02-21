@@ -11,7 +11,7 @@ from attend import Attend
 from helpers import default, exists
 
 
-class PositionEmbedder(Module):
+class SinusoidalPositionEmbedder(Module):
 
     def __init__(self, dim):
         super().__init__()
@@ -24,6 +24,31 @@ class PositionEmbedder(Module):
         freqs = 2 * math.pi * x * rearrange(self.w, 'd -> 1 d')
         fouriered = torch.cat((freqs.sin(), freqs.cos()), dim = -1)
         return fouriered
+
+class ConvolutionPositionEmbedder(Module):
+
+    def __init__(
+        self,
+        dim: int,
+        *,
+        kernel_size: int,
+        groups: Optional[int] = None
+    ):
+        super().__init__()
+        assert kernel_size % 2 == 1, 'kernel size must be even'
+        self.block = nn.Sequential(
+            nn.Conv1d(dim, dim, kernel_size, groups = default(groups, dim), padding = kernel_size // 2),
+            nn.GELU()
+        )
+
+    def forward(self, x, mask = None):
+        # TODO: Add mask support
+        assert not mask, 'masking is not yet implemented'
+        x = rearrange(x, 'b c t -> b t c')
+        x = self.block(x)
+        x = rearrange(x, 'b t c -> b c t')
+        return x
+
 
 class GEGLU(Module):
     
@@ -152,8 +177,9 @@ class Voicebox(Module):
         self.in_proj = nn.Linear(128, 512)
         self.z_embed = nn.Embedding(2001 + 1, 512)
         self.lin_proj = nn.Linear(2 * 512 + 512, 512)
+        self.conv_embed = ConvolutionPositionEmbedder(512, kernel_size = 31, groups = None) # TODO: Read about ConvolutionPositionEmbedder
         self.time_embed = nn.Sequential(
-            PositionEmbedder(512),
+            SinusoidalPositionEmbedder(512),
             nn.Linear(512, 2048),
             nn.SiLU()
         )
@@ -198,7 +224,7 @@ class Voicebox(Module):
         x = torch.cat([*filter(exists, (z_emb, x, x_ctx))], dim = -1)
         
         x = self.lin_proj(x)
-        # TODO: Add convolution
+        x = x + self.conv_embed(x)
 
         t = self.time_embed(t)
 
