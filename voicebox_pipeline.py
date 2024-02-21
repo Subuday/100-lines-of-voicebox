@@ -1,3 +1,4 @@
+from __future__ import annotations
 from einops import repeat
 import torch
 from torchdiffeq import odeint
@@ -6,6 +7,13 @@ from voicebox import Voicebox
 
 
 class VoiceboxPipeline():
+
+    @staticmethod
+    def from_pretrained(model_path, device = "cuda") -> VoiceboxPipeline:
+        model = Voicebox()
+        model.load_state_dict(torch.load(model_path, map_location = 'cpu'))
+        model.to(device)
+        return VoiceboxPipeline(model)
 
     def __init__(self, model: Voicebox):
         self.model = model
