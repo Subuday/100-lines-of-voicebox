@@ -192,13 +192,7 @@ class Voicebox(Module):
         )
         self.out_proj = nn.Linear(512, 128)
 
-    @torch.inference_mode()
-    def inference(self, z, x, t, x_ctx, x_ctx_mask, cond_dropout=0.2):
-        cond_output = self._inference(z, x, t, x_ctx, x_ctx_mask, cond_dropout_prob = 0.)
-        uncond_output = self._inference(z, x, t, x_ctx, x_ctx_mask, cond_dropout_prob = 1.)
-        return (1 - cond_dropout) * cond_output + cond_dropout * uncond_output
-
-    def _inference(
+    def forward(
         self,
         z,
         x,
