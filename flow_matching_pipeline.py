@@ -6,14 +6,14 @@ from torchdiffeq import odeint
 from voicebox import Voicebox
 
 
-class VoiceboxPipeline():
+class FlowMachingPipeline():
 
     @staticmethod
-    def from_pretrained(model_path, device = "cuda") -> VoiceboxPipeline:
+    def from_pretrained(model_path, device = "cuda") -> FlowMachingPipeline:
         model = Voicebox()
         model.load_state_dict(torch.load(model_path, map_location = 'cpu'))
         model.to(device)
-        return VoiceboxPipeline(model)
+        return FlowMachingPipeline(model)
 
     def __init__(self, model: Voicebox):
         self.model = model
