@@ -15,6 +15,8 @@ class VoiceboxPipeline():
         steps: int = 10,
         device = 'cuda'
     ):
+        self.model.eval()
+
         def fn(t, x):
             t = repeat(t, '-> b', b = x.shape[0])
             z = torch.randint(1, 1000, (1, 767)).to(device)
