@@ -13,4 +13,4 @@ class TestMatchTTS(unittest.TestCase):
         model = Voicebox()
         model.to(device)
         pipe = FlowMachingPipeline(model = model)
-        pipe()
+        pipe.inference()

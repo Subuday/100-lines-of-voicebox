@@ -1,12 +1,13 @@
 from __future__ import annotations
 from einops import repeat
 import torch
+from torch import nn
+from torch.nn import Module
 from torchdiffeq import odeint
-
 from voicebox import Voicebox
 
 
-class FlowMachingPipeline():
+class FlowMachingPipeline(Module):
 
     @staticmethod
     def from_pretrained(model_path, device = "cuda") -> FlowMachingPipeline:
@@ -16,15 +17,15 @@ class FlowMachingPipeline():
         return FlowMachingPipeline(model)
 
     def __init__(self, model: Voicebox):
+        super().__init__()
         self.model = model
 
-    def __call__(
+    @torch.no_grad()
+    def inference(
         self,
         steps: int = 10,
         device = 'cuda'
     ):
-        self.model.eval()
-
         def fn(t, x):
             t = repeat(t, '-> b', b = x.shape[0])
             z = torch.randint(1, 1000, (1, 767)).to(device)
@@ -39,3 +40,6 @@ class FlowMachingPipeline():
         x_0 = torch.rand(1, 767, 128).to(device)
         t = torch.linspace(0, 1, steps).to(device)
         x_1 = odeint(fn, x_0, t)[-1]
+
+    def forward(self):
+        pass
