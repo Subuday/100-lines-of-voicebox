@@ -5,7 +5,7 @@ from torch import nn
 from torch.nn import Module
 import torch.nn.functional as F
 
-from einops import rearrange
+from einops import pack, rearrange, repeat, unpack
 from attend import Attend
 
 from helpers import default, exists
@@ -122,6 +122,7 @@ class Transformer(Module):
         num_heads: int,
         use_skip_connection: bool = False,
         skip_connection_scale: Optional[float] = None,
+        num_registers: int = 0,
         ff_mult: int = 4,
         ff_dropout: float = 0.,
     ):
@@ -129,6 +130,9 @@ class Transformer(Module):
         self.skip_connection_scale = None
         if use_skip_connection:
             self.skip_connection_scale = default(skip_connection_scale, 2 ** -0.5)
+
+        self.num_registers = num_registers
+        self.registers = nn.Parameter(torch.randn(num_registers, dim))
 
         self.layers = nn.ModuleList([])
         assert depth % 2 == 0
@@ -149,6 +153,10 @@ class Transformer(Module):
         self.out_norm = RMSNorm(dim)
 
     def forward(self, x):
+        registers = repeat(self.registers, 'n d -> b n d', b = x.shape[0])
+        
+        x, ps = pack([registers, x], 'b * d')
+
         hidden_states = []
         for connector, attn_norm, attn, ff_norm, ff in self.layers:
             # In the paper, they use a u-net like skip connection.
@@ -166,6 +174,8 @@ class Transformer(Module):
 
             ff_input = ff_norm(x)
             x = x + ff(ff_input)
+
+        _, x = unpack(x, ps, 'b * d')
 
         return self.out_norm(x)
 
@@ -188,7 +198,8 @@ class Voicebox(Module):
             depth = 6,
             dim_head = 64,
             num_heads = 8,
-            use_skip_connection = True
+            use_skip_connection = True,
+            num_registers=16, # TODO: Think about the number of registers
         )
         self.out_proj = nn.Linear(512, 128)
 
